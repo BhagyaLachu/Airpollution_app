@@ -3,7 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
-import base64
+import json
+from streamlit_lottie import st_lottie
+
+# Helper to load animations
+def load_lottiefile(filepath: str):
+    with open(filepath, "r") as f:
+        return json.load(f)
+
+# Load animations
+success_anim = load_lottiefile("success.json")
+compare_anim = load_lottiefile("compare.json")
+eda_loading = load_lottiefile("loading.json")
 
 # Set page config
 st.set_page_config(page_title="Air Quality Forecasting 🌿", page_icon="🌍", layout="wide")
@@ -65,14 +76,25 @@ with tab1:
     st.title(f"🌿 Air Quality Forecasting - {selected_station}")
     st.markdown(f"""
     Welcome to the **Air Quality Prediction Platform** for **{selected_station}**!  
-    Navigate through the tabs to explore, analyze, and predict air quality. 🌍
+    This platform helps you visualize air pollution trends and forecast PM2.5 values using ML models.
 
     ### 🏙️ Station Info:
-    - **Dongsi**: Dense urban core, traffic-heavy.
-    - **Changping**: Suburban district, moderately polluted.
-    - **Huairou**: Clean rural area, great for contrast.
-    - **Aotizhongxin**: Near Olympic Sports Center, moderate traffic.
+    - **Dongsi**: Dense urban area, heavy vehicle traffic, typically higher pollution levels.
+    - **Changping**: Suburban district, mix of residential and industrial areas.
+    - **Huairou**: Rural setting, cleaner air, often used as a contrast benchmark.
+    - **Aotizhongxin**: Near Olympic Sports Center, moderate traffic and activity.
+
+    ### 💡 What is PM2.5?
+    - PM2.5 refers to particulate matter less than 2.5 microns in diameter.
+    - Can penetrate deep into lungs and cause health issues.
+    - Common sources: vehicle exhaust, industry, dust, and burning of materials.
+
+    ### 📈 How Predictions Work:
+    - Choose environmental values (pollutants, temperature, etc.)
+    - Pick a model (KNN or Linear Regression)
+    - Get instant PM2.5 predictions!
     """)
+
     col1, col2, col3 = st.columns(3)
     col1.metric("Avg PM2.5", f"{filtered_df['PM2.5'].mean():.2f} µg/m³")
     col2.metric("Total Records", f"{filtered_df.shape[0]}")
@@ -102,39 +124,42 @@ with tab3:
     st.title(f"📈 Exploratory Data Analysis - {selected_station}")
     chart_type = st.selectbox("Choose a visualization", ["PM2.5 Distribution", "Correlation Heatmap", "Pairplot"])
 
-    if chart_type == "PM2.5 Distribution":
-        fig, ax = plt.subplots()
-        sns.histplot(filtered_df['PM2.5'].dropna(), bins=50, kde=True, color='seagreen', ax=ax)
-        ax.set_title("Distribution of PM2.5")
-        st.pyplot(fig)
+    with st.spinner("Generating chart..."):
+        st_lottie(eda_loading, speed=1, height=150, key="eda_load")
 
-    elif chart_type == "Correlation Heatmap":
-        corr = filtered_df.select_dtypes(include=['number']).dropna().corr()
-        fig, ax = plt.subplots(figsize=(12, 8))
-        sns.heatmap(corr, annot=True, cmap='YlGnBu', fmt=".2f", ax=ax)
-        ax.set_title("Correlation Heatmap")
-        st.pyplot(fig)
-
-    elif chart_type == "Pairplot":
-        st.subheader("🔍 Custom Scatter and Histogram Viewer")
-        numeric_cols = filtered_df.select_dtypes(include=['number']).columns.tolist()
-
-        plot_type = st.radio("Choose plot type", ["Scatter Plot", "Histogram"], horizontal=True)
-
-        if plot_type == "Scatter Plot":
-            x_axis = st.selectbox("X-axis", numeric_cols, index=0)
-            y_axis = st.selectbox("Y-axis", numeric_cols, index=1)
+        if chart_type == "PM2.5 Distribution":
             fig, ax = plt.subplots()
-            sns.scatterplot(data=filtered_df, x=x_axis, y=y_axis, color='seagreen', s=20, ax=ax)
-            ax.set_title(f"{y_axis} vs {x_axis}")
+            sns.histplot(filtered_df['PM2.5'].dropna(), bins=50, kde=True, color='seagreen', ax=ax)
+            ax.set_title("Distribution of PM2.5")
             st.pyplot(fig)
 
-        elif plot_type == "Histogram":
-            hist_col = st.selectbox("Feature", numeric_cols, index=0)
-            fig, ax = plt.subplots()
-            sns.histplot(filtered_df[hist_col].dropna(), bins=30, kde=True, color='seagreen', ax=ax)
-            ax.set_title(f"Distribution of {hist_col}")
+        elif chart_type == "Correlation Heatmap":
+            corr = filtered_df.select_dtypes(include=['number']).dropna().corr()
+            fig, ax = plt.subplots(figsize=(12, 8))
+            sns.heatmap(corr, annot=True, cmap='YlGnBu', fmt=".2f", ax=ax)
+            ax.set_title("Correlation Heatmap")
             st.pyplot(fig)
+
+        elif chart_type == "Pairplot":
+            st.subheader("🔍 Custom Scatter and Histogram Viewer")
+            numeric_cols = filtered_df.select_dtypes(include=['number']).columns.tolist()
+
+            plot_type = st.radio("Choose plot type", ["Scatter Plot", "Histogram"], horizontal=True)
+
+            if plot_type == "Scatter Plot":
+                x_axis = st.selectbox("X-axis", numeric_cols, index=0)
+                y_axis = st.selectbox("Y-axis", numeric_cols, index=1)
+                fig, ax = plt.subplots()
+                sns.scatterplot(data=filtered_df, x=x_axis, y=y_axis, color='seagreen', s=20, ax=ax)
+                ax.set_title(f"{y_axis} vs {x_axis}")
+                st.pyplot(fig)
+
+            elif plot_type == "Histogram":
+                hist_col = st.selectbox("Feature", numeric_cols, index=0)
+                fig, ax = plt.subplots()
+                sns.histplot(filtered_df[hist_col].dropna(), bins=30, kde=True, color='seagreen', ax=ax)
+                ax.set_title(f"Distribution of {hist_col}")
+                st.pyplot(fig)
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- Prediction ---
@@ -171,23 +196,27 @@ with tab4:
 
     if submit_predict:
         try:
-            input_scaled = scaler.transform(input_data)
-            model = model_knn if model_option == "KNN" else model_lr
-            prediction = model.predict(input_scaled)
+            with st.spinner("Running prediction..."):
+                input_scaled = scaler.transform(input_data)
+                model = model_knn if model_option == "KNN" else model_lr
+                prediction = model.predict(input_scaled)
             st.success(f"🎯 Predicted PM2.5 using {model_option}: **{prediction[0]:.2f} µg/m³**")
+            st_lottie(success_anim, speed=1, height=200, key="success_anim")
         except Exception as e:
             st.error(f"Prediction failed: {e}")
 
     if submit_compare:
         try:
-            input_scaled = scaler.transform(input_data)
-            knn_pred = model_knn.predict(input_scaled)[0]
-            lr_pred = model_lr.predict(input_scaled)[0]
+            with st.spinner("Comparing models..."):
+                input_scaled = scaler.transform(input_data)
+                knn_pred = model_knn.predict(input_scaled)[0]
+                lr_pred = model_lr.predict(input_scaled)[0]
             comp_df = pd.DataFrame({
                 "Model": ["KNN", "Linear Regression"],
                 "Predicted PM2.5": [knn_pred, lr_pred]
             }).round(2)
             st.table(comp_df)
+            st_lottie(compare_anim, speed=1, loop=True, height=250, key="compare_anim")
         except Exception as e:
             st.error(f"Comparison failed: {e}")
     st.markdown('</div>', unsafe_allow_html=True)
